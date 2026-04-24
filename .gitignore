@@ -1,0 +1,13 @@
+# environment variable
+.env
+
+# virtual environment
+.venv
+
+# cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# kiro specs
+.kiro/
