@@ -104,7 +104,7 @@ USE_I18N = True
 USE_TZ = True
 
 ##### REST FRAMEWORK #####
-# AUTH_USER_MODEL = 'users.User'
+AUTH_USER_MODEL = 'users.User'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -134,3 +134,16 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# =========== EMAIL CONFIG ===========
+# Dùng SMTP Gmail để gửi email xác thực
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')       # Gmail address
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # Gmail App Password (không phải password thường)
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
+
+# URL frontend dùng để tạo link xác thực trong email
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:8000')
