@@ -10,9 +10,9 @@ urlpatterns = [
     # POST /api/projects/<project_id>/tasks/          → create task (member only)
     path('', views.TaskListCreateView.as_view(), name='task-list-create'),
 
-    # GET    /api/projects/<project_id>/tasks/<task_id>/  → retrieve task detail
-    # PATCH  /api/projects/<project_id>/tasks/<task_id>/  → update task (member only)
-    # PUT    /api/projects/<project_id>/tasks/<task_id>/  → update task (member only)
+    # GET    /api/projects/<project_id>/tasks/<task_id>/  → retrieve task detail (member)
+    # PUT    /api/projects/<project_id>/tasks/<task_id>/  → update task (member)
+    # PATCH  /api/projects/<project_id>/tasks/<task_id>/  → partial update task (member)
     # DELETE /api/projects/<project_id>/tasks/<task_id>/  → delete task (owner only)
     path('<uuid:task_id>/', views.TaskDetailView.as_view(), name='task-detail'),
 ]
