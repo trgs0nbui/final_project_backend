@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from pathlib import Path
 from datetime import timedelta
+from corsheaders.defaults import default_headers
 
 load_dotenv()
 
@@ -28,7 +29,10 @@ INSTALLED_APPS = [
     # local apps
     'apps.users',
     'apps.projects',
-    'apps.tasks'
+    'apps.tasks',
+    
+    # cors
+    "corsheaders",
 ]
 
 MIDDLEWARE = [
@@ -39,6 +43,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    
+    # cors
+    "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.common.CommonMiddleware",
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -147,3 +155,12 @@ DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
 
 # URL frontend dùng để tạo link xác thực trong email
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:8000')
+
+# ============= CORS =================
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+]
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "authorization",
+]

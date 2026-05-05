@@ -4,7 +4,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, PermissionDenied
+from apps.users.serializers import UserSerializer
 
 from apps.common.pagination import CustomPageNumberPagination
 from .repositories import ProjectRepository, ProjectMembershipRepository
@@ -173,3 +174,45 @@ class ProjectMemberDestroyView(APIView):
             f"from project_id={pk} by owner_id={request.user.id}"
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ProjectMemberSearchView(APIView):
+    """
+    GET /api/projects/<pk>/members/search/?q=<query>
+
+    Tìm kiếm user trong hệ thống theo username hoặc email để thêm vào project.
+    Chỉ trả về user chưa là thành viên của project.
+    Chỉ owner mới có quyền gọi endpoint này.
+
+    Query params:
+        q (str, required): Chuỗi tìm kiếm (tối thiểu 2 ký tự).
+
+    Returns:
+        200: Danh sách user khớp với query, tối đa 10 kết quả.
+        400: Nếu q thiếu hoặc quá ngắn.
+        403: Nếu user không phải owner.
+        404: Nếu project không tồn tại hoặc user không phải thành viên.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        """Tìm kiếm user chưa là thành viên của project để thêm vào."""
+        project = get_project_or_404(pk, request.user)
+
+        # Chỉ owner mới có quyền tìm kiếm để thêm thành viên
+        if project.owner_id != request.user.id:
+            
+            raise PermissionDenied("Bạn không có quyền thêm thành viên vào dự án này.")
+
+        q = request.query_params.get('q', '').strip()
+        if len(q) < 2:
+            return Response(
+                {'q': ['Chuỗi tìm kiếm phải có ít nhất 2 ký tự.']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        users = ProjectService.search_users_to_add(project, q)
+
+        
+        return Response(UserSerializer(users, many=True).data, status=status.HTTP_200_OK)

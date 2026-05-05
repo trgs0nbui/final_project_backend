@@ -21,4 +21,7 @@ urlpatterns = [
 
     # DELETE /api/projects/<id>/members/<user_id>/  → remove member (owner only)
     path('<uuid:pk>/members/<uuid:user_id>/', views.ProjectMemberDestroyView.as_view(), name='project-member-destroy'),
+
+    # GET /api/projects/<id>/members/search/?q=  → search users to add (owner only)
+    path('<uuid:pk>/members/search/', views.ProjectMemberSearchView.as_view(), name='project-member-search'),
 ]

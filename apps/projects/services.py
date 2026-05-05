@@ -2,11 +2,11 @@ import logging
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
 from .enums import ProjectRole
 from .models import Project, ProjectMembership
+from django.db.models import Q
 from .repositories import ProjectMembershipRepository, ProjectRepository
 
 logger = logging.getLogger(__name__)
@@ -183,6 +183,35 @@ class ProjectService:
 
         ProjectMembershipRepository.delete(membership)
         logger.info(f"Member removed: user_id={user_id} from project_id={project.id}, by owner_id={owner.id}")
+
+    @staticmethod
+    def search_users_to_add(project: Project, query: str):
+        """
+        Tìm kiếm user theo username hoặc email để thêm vào project.
+        Chỉ trả về user chưa là thành viên của project, tối đa 10 kết quả.
+
+        Args:
+            project: Project instance.
+            query: Chuỗi tìm kiếm (username hoặc email, tối thiểu 2 ký tự).
+
+        Returns:
+            QuerySet[User]: Danh sách user khớp, chưa là thành viên.
+        """
+        
+
+        existing_member_ids = ProjectMembership.objects.filter(
+            project=project
+        ).values_list('user_id', flat=True)
+
+        return (
+            User.objects
+            .filter(
+                Q(username__icontains=query) | Q(email__icontains=query)
+            )
+            .exclude(id__in=existing_member_ids)
+            .filter(is_active=True)
+            .order_by('username')[:10]
+        )
 
     @staticmethod
     def get_members(project: Project, user):
