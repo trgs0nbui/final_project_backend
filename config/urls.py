@@ -14,6 +14,12 @@ urlpatterns = [
 
     # Task CRUD (nested under project)
     path("api/projects/<uuid:project_id>/tasks/", include("apps.tasks.urls")),
+
+    # Comments (nested under tasks)
+    path(
+        "api/projects/<uuid:project_id>/tasks/<uuid:task_id>/comments/",
+        include("apps.comments.urls"),
+    ),
 ]
 
 # Serve uploaded media files in development
