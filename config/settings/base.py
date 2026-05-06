@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'apps.users',
     'apps.projects',
     'apps.tasks',
+    'apps.comments',
     
     # cors
     "corsheaders",
