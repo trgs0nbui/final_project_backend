@@ -24,4 +24,7 @@ urlpatterns = [
 
     # GET /api/projects/<id>/members/search/?q=  → search users to add (owner only)
     path('<uuid:pk>/members/search/', views.ProjectMemberSearchView.as_view(), name='project-member-search'),
+
+    # GET /api/projects/member-stats/  → total members in owned projects
+    path('member-stats/', views.ProjectMemberStatsView.as_view(), name='project-member-stats'),
 ]

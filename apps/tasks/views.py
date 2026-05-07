@@ -4,10 +4,13 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
+
+from django.contrib.auth import get_user_model
 
 from apps.common.pagination import CustomPageNumberPagination
 from apps.projects.repositories import ProjectRepository, ProjectMembershipRepository
+from .models import Task
 from .repositories import TaskRepository
 from .services import TaskService
 from .serializers import TaskFilterSerializer, TaskSerializer
@@ -103,7 +106,6 @@ class TaskListCreateView(APIView):
         assignee = None
         assignee_id = validated.pop('assignee_id', None)
         if assignee_id is not None:
-            from django.contrib.auth import get_user_model
             User = get_user_model()
             try:
                 assignee = User.objects.get(id=assignee_id)
@@ -223,12 +225,66 @@ class TaskDetailView(APIView):
             data['assignee'] = None
             return data
 
-        from django.contrib.auth import get_user_model
         User = get_user_model()
         try:
             data['assignee'] = User.objects.get(id=assignee_id)
         except User.DoesNotExist:
-            from rest_framework.exceptions import ValidationError
             raise ValidationError({'assignee_id': 'Người dùng không tồn tại.'})
 
         return data
+
+
+class MyTaskListView(APIView):
+    """
+    GET /api/tasks/  — Danh sách task được giao cho user hiện tại,
+    across tất cả projects mà user là thành viên.
+
+    Query params (tùy chọn):
+        status   — lọc theo trạng thái (todo | in_progress | done)
+        priority — lọc theo độ ưu tiên (low | medium | high)
+        search   — tìm kiếm theo title hoặc description
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        filters = {
+            'status': request.query_params.get('status', ''),
+            'priority': request.query_params.get('priority', ''),
+            'search': request.query_params.get('search', ''),
+        }
+        # Loại bỏ key có giá trị rỗng để repository không lọc thừa
+        filters = {k: v for k, v in filters.items() if v}
+
+        queryset = TaskService.get_my_tasks(request.user, filters)
+
+        paginator = CustomPageNumberPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        serializer = TaskSerializer(page, many=True)
+
+        logger.debug(
+            f"MyTaskListView.get: user_id={request.user.id}, filters={filters}"
+        )
+        return paginator.get_paginated_response(serializer.data)
+
+
+class MyTaskStatsView(APIView):
+    """
+    GET /api/tasks/stats/  — Thống kê tasks được giao cho user hiện tại.
+
+    Returns:
+        {
+            "total_assigned": int,       — tổng tasks được giao
+            "high_priority_todo": int,   — tasks high priority chưa done
+            "overdue": int,              — tasks quá hạn chưa done
+            "in_progress": int,          — tasks đang thực hiện
+            "done": int,                 — tasks đã hoàn thành
+        }
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        stats = TaskService.get_my_task_stats(request.user)
+        logger.debug(f"MyTaskStatsView.get: user_id={request.user.id}, stats={stats}")
+        return Response(stats, status=status.HTTP_200_OK)

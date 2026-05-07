@@ -8,7 +8,9 @@ from django.db import transaction
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from .models import Task
-from .repositories import TaskMembershipRepository, TaskRepository
+from .repositories import TaskMembershipRepository, TaskRepository,  MyTaskRepository
+from .tasks import invalidate_project_tasks_cache
+
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +83,6 @@ class TaskService:
         )
 
         # Invalidate cache danh sách task của project
-        from .tasks import invalidate_project_tasks_cache
         _safe_enqueue(invalidate_project_tasks_cache, str(project.id))
 
         return task
@@ -120,7 +121,6 @@ class TaskService:
         logger.info(f"Task updated: id={task.id}, by user_id={user.id}")
 
         # Invalidate cache danh sách task của project
-        from .tasks import invalidate_project_tasks_cache
         _safe_enqueue(invalidate_project_tasks_cache, project_id)
 
         return task
@@ -151,7 +151,6 @@ class TaskService:
         logger.info(f"Task deleted: id={task_id}, by user_id={user.id}")
 
         # Invalidate cache danh sách task của project
-        from .tasks import invalidate_project_tasks_cache
         _safe_enqueue(invalidate_project_tasks_cache, project_id)
 
     @staticmethod
@@ -210,3 +209,36 @@ class TaskService:
         except Exception as e:
             logger.error(f"Redis error in filter_tasks (key={cache_key}): {e}")
             return TaskRepository.filter_by_project(project, filters)
+
+    @staticmethod
+    def get_my_tasks(user, filters: dict = None):
+        """
+        Trả về queryset Task được giao cho user trên tất cả project.
+        Uỷ quyền truy vấn DB cho MyTaskRepository.
+
+        Args:
+            user: User instance.
+            filters: Dict tùy chọn với các key: status, priority, search.
+
+        Returns:
+            QuerySet[Task]
+        """
+        queryset = MyTaskRepository.get_assigned_tasks(user, filters or {})
+        logger.debug(f"TaskService.get_my_tasks: user_id={user.id}, filters={filters}")
+        return queryset
+
+    @staticmethod
+    def get_my_task_stats(user) -> dict:
+        """
+        Trả về thống kê tasks được giao cho user trên tất cả project.
+        Uỷ quyền tính toán cho MyTaskRepository.
+
+        Args:
+            user: User instance.
+
+        Returns:
+            dict: { total_assigned, high_priority_todo, overdue, in_progress, done }
+        """
+        stats = MyTaskRepository.get_stats(user)
+        logger.debug(f"TaskService.get_my_task_stats: user_id={user.id}, stats={stats}")
+        return stats

@@ -216,3 +216,24 @@ class ProjectMemberSearchView(APIView):
 
         
         return Response(UserSerializer(users, many=True).data, status=status.HTTP_200_OK)
+
+
+class ProjectMemberStatsView(APIView):
+    """
+    GET /api/projects/member-stats/
+
+    Trả về tổng số thành viên trong tất cả projects mà user hiện tại là owner.
+
+    Returns:
+        {
+            "total_members": int,   — tổng thành viên trong các project user là owner
+            "owned_projects": int,  — số project user là owner
+        }
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        stats = ProjectService.get_member_stats(request.user)
+        logger.debug(f"ProjectMemberStatsView.get: user_id={request.user.id}, stats={stats}")
+        return Response(stats, status=status.HTTP_200_OK)
