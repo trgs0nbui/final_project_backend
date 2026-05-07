@@ -116,7 +116,7 @@ class TaskRepository:
         Returns:
             QuerySet[Task]: Queryset đã được lọc, chưa phân trang.
         """
-        queryset = Task.objects.filter(project=project).select_related('assignee', 'created_by')
+        queryset = Task.objects.filter(project=project).select_related('assignee', 'created_by').order_by('-created_at')
 
         status = filters.get('status')
         if status is not None:

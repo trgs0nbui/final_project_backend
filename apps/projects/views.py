@@ -50,7 +50,7 @@ class ProjectListCreateView(APIView):
         page = paginator.paginate_queryset(projects, request)
         serializer = ProjectSerializer(page, many=True)
 
-        logger.debug(f"ProjectListCreateView.get: user_id={request.user.id}, count={projects.count()}")
+        logger.debug(f"ProjectListCreateView.get: user_id={request.user.id}")
         return paginator.get_paginated_response(serializer.data)
 
     def post(self, request):

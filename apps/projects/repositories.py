@@ -77,6 +77,7 @@ class ProjectRepository:
             .filter(memberships__user=user)
             .select_related('owner')
             .distinct()
+            .order_by('-created_at')
         )
 
     @staticmethod
@@ -231,6 +232,7 @@ class ProjectMembershipRepository:
             ProjectMembership.objects
             .filter(project=project)
             .select_related('user')
+            .order_by('joined_at')
         )
 
     @staticmethod
