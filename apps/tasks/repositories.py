@@ -4,6 +4,7 @@ from typing import Optional
 from django.db.models import Q, QuerySet
 
 from apps.projects.models import Project, ProjectMembership
+from django.utils import timezone
 
 from .models import Task
 
@@ -145,6 +146,95 @@ class TaskRepository:
             )
 
         return queryset
+
+
+class MyTaskRepository:
+    """
+    Đảm nhận các truy vấn cross-project cho tasks được giao cho một user cụ thể.
+    Tách biệt khỏi TaskRepository để rõ ràng về phạm vi truy vấn.
+    """
+
+    @staticmethod
+    def get_assigned_tasks(user, filters: dict = None) -> QuerySet:
+        """
+        Trả về queryset Task được giao cho user trên tất cả project mà user là thành viên.
+
+        Args:
+            user: User instance.
+            filters: Dict tùy chọn với các key: status, priority, search.
+
+        Returns:
+            QuerySet[Task]
+        """
+
+        member_project_ids = (
+            ProjectMembership.objects
+            .filter(user=user)
+            .values_list('project_id', flat=True)
+        )
+
+        queryset = (
+            Task.objects
+            .filter(project_id__in=member_project_ids, assignee=user)
+            .select_related('assignee', 'created_by', 'project')
+            .order_by('-created_at')
+        )
+
+        if filters:
+            task_status = filters.get('status')
+            if task_status:
+                queryset = queryset.filter(status=task_status)
+
+            priority = filters.get('priority')
+            if priority:
+                queryset = queryset.filter(priority=priority)
+
+            search = filters.get('search', '').strip()
+            if search:
+                queryset = queryset.filter(
+                    Q(title__icontains=search) | Q(description__icontains=search)
+                )
+
+        logger.debug(f"MyTaskRepository.get_assigned_tasks: user_id={user.id}")
+        return queryset
+
+    @staticmethod
+    def get_stats(user) -> dict:
+        """
+        Tính toán thống kê tasks được giao cho user trên tất cả project.
+
+        Args:
+            user: User instance.
+
+        Returns:
+            dict: {
+                total_assigned, high_priority_todo, overdue, in_progress, done
+            }
+        """
+
+        member_project_ids = (
+            ProjectMembership.objects
+            .filter(user=user)
+            .values_list('project_id', flat=True)
+        )
+
+        base_qs = Task.objects.filter(
+            project_id__in=member_project_ids,
+            assignee=user,
+        )
+
+        today = timezone.now().date()
+
+        stats = {
+            'total_assigned': base_qs.count(),
+            'high_priority_todo': base_qs.filter(priority='high').exclude(status='done').count(),
+            'overdue': base_qs.filter(due_date__lt=today).exclude(status='done').count(),
+            'in_progress': base_qs.filter(status='in_progress').count(),
+            'done': base_qs.filter(status='done').count(),
+        }
+
+        logger.debug(f"MyTaskRepository.get_stats: user_id={user.id}, stats={stats}")
+        return stats
 
 
 class TaskMembershipRepository:

@@ -3,6 +3,8 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+from apps.tasks.urls import my_task_urlpatterns
+
 urlpatterns = [
     path("admin/", admin.site.urls),
 
@@ -14,6 +16,11 @@ urlpatterns = [
 
     # Task CRUD (nested under project)
     path("api/projects/<uuid:project_id>/tasks/", include("apps.tasks.urls")),
+
+    # My tasks — cross-project task views for the authenticated user
+    # GET /api/tasks/          → tasks assigned to current user
+    # GET /api/tasks/stats/    → stats for tasks assigned to current user
+    path("api/tasks/", include((my_task_urlpatterns, "tasks"))),
 
     # Comments (nested under tasks)
     path(

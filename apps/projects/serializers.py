@@ -8,11 +8,13 @@ from .models import Project, ProjectMembership
 class ProjectSerializer(serializers.ModelSerializer):
     """
     Serializer cho Project.
-    Trả về thông tin chi tiết dự án, bao gồm owner dạng nested read-only.
+    Trả về thông tin chi tiết dự án, bao gồm owner dạng nested read-only
+    và task_count — số lượng task thuộc project (annotated từ queryset).
     Field `key` được tự động chuyển thành chữ hoa trước khi validate.
     """
 
     owner = UserSerializer(read_only=True)
+    task_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Project
@@ -24,10 +26,11 @@ class ProjectSerializer(serializers.ModelSerializer):
             'project_type',
             'category',
             'owner',
+            'task_count',
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'owner', 'task_count', 'created_at', 'updated_at']
 
     def validate_key(self, value: str) -> str:
         """

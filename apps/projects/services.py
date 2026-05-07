@@ -4,12 +4,19 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
 from .enums import ProjectRole
 from .models import Project, ProjectMembership
-from .repositories import ProjectMembershipRepository, ProjectRepository
+from .repositories import ProjectMembershipRepository, ProjectRepository, ProjectOwnerRepository
+from .models import ProjectMembership as PM
+from .tasks import (
+            invalidate_project_members_cache,
+            invalidate_search_users_cache,
+            invalidate_user_projects_cache, 
+            invalidate_project_all_cache
+        )
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +79,6 @@ class ProjectService:
         logger.info(f"Project created: id={project.id}, name='{project.name}', owner_id={owner.id}")
 
         # Invalidate cache danh sách project của owner
-        from .tasks import invalidate_user_projects_cache
         _safe_enqueue(invalidate_user_projects_cache, str(owner.id))
 
         return project
@@ -95,11 +101,12 @@ class ProjectService:
             cached_ids = cache.get(cache_key)
             if cached_ids is not None:
                 logger.debug(f"Cache hit: key={cache_key}, method=get_user_projects")
-                # Trả về QuerySet lọc theo IDs đã cache — giữ nguyên interface
+                # Trả về QuerySet lọc theo IDs đã cache — annotate task_count để giữ nguyên interface
                 return (
                     Project.objects
                     .filter(id__in=cached_ids)
                     .select_related('owner')
+                    .annotate(task_count=Count('tasks', distinct=True))
                     .order_by('-created_at')
                 )
 
@@ -142,7 +149,6 @@ class ProjectService:
         logger.info(f"Project updated: id={project.id}, by user_id={user.id}")
 
         # Invalidate cache user_projects cho tất cả thành viên
-        from .tasks import invalidate_user_projects_cache
         member_ids = list(
             ProjectMembership.objects.filter(project=project).values_list('user_id', flat=True)
         )
@@ -182,7 +188,6 @@ class ProjectService:
         logger.info(f"Project deleted: id={project_id}, by user_id={user.id}")
 
         # Invalidate toàn bộ cache liên quan đến project
-        from .tasks import invalidate_project_all_cache
         _safe_enqueue(invalidate_project_all_cache, project_id, member_id_strs)
 
     @staticmethod
@@ -223,11 +228,6 @@ class ProjectService:
         logger.info(f"Member added: user_id={user.id} to project_id={project.id}, by owner_id={owner.id}")
 
         # Invalidate cache liên quan
-        from .tasks import (
-            invalidate_project_members_cache,
-            invalidate_search_users_cache,
-            invalidate_user_projects_cache,
-        )
         _safe_enqueue(invalidate_project_members_cache, str(project.id))
         _safe_enqueue(invalidate_user_projects_cache, str(user_id))
         _safe_enqueue(invalidate_search_users_cache, str(project.id))
@@ -271,7 +271,6 @@ class ProjectService:
         logger.info(f"Member removed: user_id={user_id} from project_id={project.id}, by owner_id={owner.id}")
 
         # Invalidate cache liên quan
-        from .tasks import invalidate_project_members_cache, invalidate_user_projects_cache
         _safe_enqueue(invalidate_project_members_cache, str(project.id))
         _safe_enqueue(invalidate_user_projects_cache, str(user_id))
 
@@ -335,7 +334,32 @@ class ProjectService:
             )
 
     @staticmethod
-    def get_members(project: Project, user):
+    def get_member_stats(user) -> dict:
+        """
+        Trả về thống kê thành viên cho các project mà user là owner.
+
+        Args:
+            user: User instance.
+
+        Returns:
+            dict: {
+                "total_members": int,  — tổng membership trong các project user là owner
+                "owned_projects": int, — số project user là owner
+            }
+        """
+        
+        owned_ids = ProjectOwnerRepository.get_owned_project_ids(user)
+        total_members = ProjectMembershipRepository.count_members_in_projects(owned_ids)
+
+        stats = {
+            'total_members': total_members,
+            'owned_projects': len(owned_ids),
+        }
+        logger.debug(f"ProjectService.get_member_stats: user_id={user.id}, stats={stats}")
+        return stats
+
+    @staticmethod
+    def get_members(project: Project, user):        
         """
         Trả về danh sách ProjectMembership của project.
         User phải là thành viên mới có quyền xem.
@@ -365,7 +389,6 @@ class ProjectService:
             if cached_ids is not None:
                 logger.debug(f"Cache hit: key={cache_key}, method=get_members")
                 # Trả về QuerySet lọc theo IDs đã cache — giữ nguyên interface
-                from .models import ProjectMembership as PM
                 return (
                     PM.objects
                     .filter(id__in=cached_ids)

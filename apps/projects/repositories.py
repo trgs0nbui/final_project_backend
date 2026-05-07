@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 
 from django.contrib.auth import get_user_model
-from django.db.models import QuerySet
+from django.db.models import Count, QuerySet
 
 from .enums import ProjectRole
 from .models import Project, ProjectMembership
@@ -64,6 +64,7 @@ class ProjectRepository:
     def get_projects_for_user(user) -> QuerySet:
         """
         Trả về queryset các Project mà user là thành viên (owner hoặc member).
+        Annotate thêm task_count — số lượng task thuộc mỗi project.
         Sử dụng select_related để tránh N+1 khi truy cập project.owner.
 
         Args:
@@ -76,6 +77,7 @@ class ProjectRepository:
             Project.objects
             .filter(memberships__user=user)
             .select_related('owner')
+            .annotate(task_count=Count('tasks', distinct=True))
             .distinct()
             .order_by('-created_at')
         )
@@ -246,3 +248,42 @@ class ProjectMembershipRepository:
         membership_id = membership.id
         membership.delete()
         logger.debug(f"ProjectMembershipRepository.delete: id={membership_id}")
+
+    @staticmethod
+    def count_members_in_projects(project_ids) -> int:
+        """
+        Đếm tổng số membership trong danh sách project_ids.
+
+        Args:
+            project_ids: Iterable các UUID project.
+
+        Returns:
+            int: Tổng số membership.
+        """
+        return ProjectMembership.objects.filter(project_id__in=project_ids).count()
+
+
+class ProjectOwnerRepository:
+    """
+    Đảm nhận các truy vấn liên quan đến quyền sở hữu project.
+    Tách biệt để view/service không truy cập model trực tiếp.
+    """
+
+    @staticmethod
+    def get_owned_project_ids(user) -> list:
+        """
+        Trả về danh sách UUID (dạng str) của các project mà user là owner.
+
+        Args:
+            user: User instance.
+
+        Returns:
+            list[str]: Danh sách project id.
+        """
+        ids = list(
+            Project.objects
+            .filter(owner=user)
+            .values_list('id', flat=True)
+        )
+        logger.debug(f"ProjectOwnerRepository.get_owned_project_ids: user_id={user.id}, count={len(ids)}")
+        return [str(pid) for pid in ids]
