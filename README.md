@@ -2,10 +2,15 @@
 
 Backend API cho hệ thống quản lý công việc theo nhóm, xây dựng bằng **Django REST Framework** với xác thực JWT, phân quyền theo vai trò, tìm kiếm/lọc công việc và phân trang.
 
+> **Xem thêm:**
+> - 🐳 Hướng dẫn chạy toàn bộ stack bằng Docker → [`infra/README.md`](../infra/README.md)
+> - 🖥️ Hướng dẫn setup frontend Vue 3 → [`task-management-frontend/README.md`](../task-management-frontend/README.md)
+
 ---
 
 ## Mục Lục
 
+- [Kiến Trúc Hệ Thống](#kiến-trúc-hệ-thống)
 - [Yêu Cầu Hệ Thống](#yêu-cầu-hệ-thống)
 - [Cài Đặt Môi Trường](#cài-đặt-môi-trường)
 - [Cấu Hình Biến Môi Trường](#cấu-hình-biến-môi-trường)
@@ -15,6 +20,44 @@ Backend API cho hệ thống quản lý công việc theo nhóm, xây dựng b�
 - [Chạy Tests](#chạy-tests)
 - [Cấu Trúc Dự Án](#cấu-trúc-dự-án)
 - [API Endpoints](#api-endpoints)
+
+---
+
+## Kiến Trúc Hệ Thống
+
+```
+┌─────────────────┐
+│   Frontend      │  Vue 3 + Vite + Element Plus
+│   :5173         │  → task-management-frontend/
+└────────┬────────┘
+         │ HTTP (CORS)
+         ▼
+┌─────────────────┐
+│   Backend       │  Django REST Framework + JWT
+│   :8000         │  → task-management-backend/
+└────────┬────────┘
+         │
+    ┌────┴────┬──────────┐
+    ▼         ▼          ▼
+┌────────┐ ┌──────┐ ┌────────┐
+│ Postgres│ │Redis │ │Celery  │
+│  :5432  │ │:6379 │ │Worker  │
+└─────────┘ └──────┘ └────────┘
+```
+
+**Môi trường Development:**
+- Backend chạy tại `http://localhost:8000` (Django dev server)
+- Frontend chạy tại `http://localhost:5173` (Vite dev server)
+- Database: PostgreSQL local hoặc Docker
+- Cache & Celery broker: Redis
+
+**Môi trường Production:**
+- Backend: Gunicorn WSGI server
+- Frontend: Static files build bằng Vite, serve qua Nginx
+- Nginx: Reverse proxy, serve static/media files
+- Tất cả services chạy trong Docker containers
+
+> Xem hướng dẫn đầy đủ về Docker setup tại [`infra/README.md`](../infra/README.md)
 
 ---
 
@@ -125,7 +168,11 @@ POSTGRES_PORT=5432
 | `POSTGRES_PORT` | ✅ | Port PostgreSQL (mặc định: `5432`) |
 | `EMAIL_HOST_USER` | ❌ | Gmail address dùng để gửi email xác thực |
 | `EMAIL_HOST_PASSWORD` | ❌ | Gmail App Password (không phải password thường) |
-| `FRONTEND_URL` | ❌ | URL frontend dùng trong link email (mặc định: `http://localhost:8000`) |
+| `FRONTEND_URL` | ❌ | URL frontend dùng trong link email xác thực (mặc định: `http://localhost:5173`) |
+
+> **Lấy Gmail App Password:** Vào [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords), bật 2-Step Verification, tạo App Password cho "Mail".
+
+> **`FRONTEND_URL`** phải trỏ về địa chỉ của frontend Vue, không phải backend. Trong dev là `http://localhost:5173`, trong production là domain thực của bạn. Backend dùng giá trị này để tạo link xác thực email gửi cho người dùng — link sẽ dẫn đến route `/verify-email?token=...` trên frontend. Xem thêm luồng xác thực tại [`task-management-frontend/README.md`](../task-management-frontend/README.md#luồng-xác-thực-email).
 
 ---
 
@@ -197,10 +244,16 @@ Sau khi khởi động, thử gọi API đăng ký:
 ```bash
 curl -X POST http://localhost:8000/api/auth/register/ \
   -H "Content-Type: application/json" \
-  -d '{"username": "testuser", "email": "test@example.com", "password": "password123"}'
+  -d '{"username": "testuser", "email": "test@example.com", "password": "password123", "confirm_password": "password123"}'
 ```
 
-Kết quả mong đợi: HTTP 201 với thông tin user.
+Kết quả mong đợi: HTTP 201 với thông tin user và thông báo kiểm tra email.
+
+> **Lưu ý:** Sau khi đăng ký, người dùng cần xác thực email trước khi đăng nhập. Backend gửi link xác thực về địa chỉ email đã đăng ký. Link trỏ về frontend tại `{FRONTEND_URL}/verify-email?token=...`. Xem thêm tại [`task-management-frontend/README.md`](../task-management-frontend/README.md#luồng-xác-thực-email).
+
+### Chạy với Docker
+
+Nếu muốn chạy backend cùng toàn bộ stack (PostgreSQL, Redis, Celery, Frontend) bằng Docker, xem hướng dẫn tại [`infra/README.md`](../infra/README.md).
 
 ---
 
@@ -277,16 +330,20 @@ task-management-backend/
 
 | Method | Endpoint | Mô tả |
 |---|---|---|
-| POST | `/api/auth/register/` | Đăng ký tài khoản mới |
-| POST | `/api/auth/login/` | Đăng nhập, nhận JWT tokens |
+| POST | `/api/auth/register/` | Đăng ký tài khoản mới — gửi email xác thực |
+| POST | `/api/auth/login/` | Đăng nhập, nhận JWT tokens (yêu cầu email đã xác thực) |
 | POST | `/api/auth/token/refresh/` | Làm mới access token |
+| GET | `/api/auth/verify-email/?token=<token>` | Xác thực email từ link trong email |
+
+> Luồng đăng ký → xác thực email → đăng nhập được xử lý hoàn toàn trên frontend. Xem chi tiết tại [`task-management-frontend/README.md`](../task-management-frontend/README.md#luồng-xác-thực-email).
 
 ### Users
 
 | Method | Endpoint | Mô tả |
 |---|---|---|
 | GET | `/api/users/me/` | Xem hồ sơ cá nhân |
-| PATCH | `/api/users/me/` | Cập nhật hồ sơ cá nhân |
+| PATCH | `/api/users/me/` | Cập nhật hồ sơ cá nhân (`full_name`, `avatar_url`) |
+| POST | `/api/users/me/avatar/` | Upload ảnh đại diện (multipart, tối đa 2MB) |
 
 ### Projects
 
@@ -326,7 +383,7 @@ task-management-backend/
 
 ## Xác Thực
 
-Tất cả endpoints (trừ đăng ký và đăng nhập) yêu cầu JWT access token trong header:
+Tất cả endpoints (trừ đăng ký, đăng nhập và xác thực email) yêu cầu JWT access token trong header:
 
 ```
 Authorization: Bearer <access_token>
@@ -334,3 +391,14 @@ Authorization: Bearer <access_token>
 
 - **Access token** có hiệu lực trong **60 phút**
 - **Refresh token** có hiệu lực trong **7 ngày**
+
+Token được quản lý tự động bởi frontend (tự động refresh khi hết hạn). Xem chi tiết tại [`task-management-frontend/README.md`](../task-management-frontend/README.md).
+
+---
+
+## Liên Kết Liên Quan
+
+| Tài liệu | Mô tả |
+|---|---|
+| [`infra/README.md`](../infra/README.md) | Hướng dẫn chạy toàn bộ stack bằng Docker (dev & prod) |
+| [`task-management-frontend/README.md`](../task-management-frontend/README.md) | Hướng dẫn setup và chạy frontend Vue 3 |

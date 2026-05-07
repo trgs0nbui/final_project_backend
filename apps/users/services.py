@@ -26,7 +26,7 @@ class EmailService:
             token: Token xác thực dạng hex string.
         """
         verification_url = (
-            f"{settings.FRONTEND_URL}/api/auth/verify-email/?token={token}"
+            f"{settings.FRONTEND_URL}/verify-email?token={token}"
         )
 
         subject = "Xác thực tài khoản Task Manager"
@@ -123,6 +123,14 @@ class UserService:
             )
             raise AuthenticationFailed(
                 "Thông tin đăng nhập không chính xác. Vui lòng kiểm tra lại."
+            )
+
+        if not user.is_email_verified:
+            logger.warning(
+                f"Login attempt with unverified email: id={user.id}, username={user.username}"
+            )
+            raise AuthenticationFailed(
+                "Email chưa được xác thực. Vui lòng kiểm tra hộp thư và nhấp vào liên kết xác thực."
             )
 
         logger.info(f"User logged in: id={user.id}, username={user.username}")
